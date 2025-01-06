@@ -20,8 +20,6 @@ import React, { useState, useRef, useEffect } from 'react';
       const winningPhotoInputRef = useRef(null);
       const videoRef = useRef(null);
       const canvasRef = useRef(null);
-      const [isCameraActive, setIsCameraActive] = useState(false);
-      const [isWinningCameraActive, setIsWinningCameraActive] = useState(false);
       const [modalImage, setModalImage] = useState(null);
       const [confirmDeleteId, setConfirmDeleteId] = useState(null);
       const navigate = useNavigate();
@@ -78,112 +76,6 @@ import React, { useState, useRef, useEffect } from 'react';
         } catch (error) {
           console.error('Error compressing winning image:', error);
         }
-      };
-
-      const handleOpenCamera = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-          });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            setIsCameraActive(true);
-          }
-        } catch (error) {
-          console.error('Error accessing camera:', error);
-        }
-      };
-
-      const handleOpenWinningCamera = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-          });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            setIsWinningCameraActive(true);
-          }
-        } catch (error) {
-          console.error('Error accessing camera:', error);
-        }
-      };
-
-      const handleTakePhoto = async () => {
-        if (videoRef.current && canvasRef.current) {
-          const video = videoRef.current;
-          const canvas = canvasRef.current;
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/png');
-          try {
-            const compressedFile = await imageCompression(
-              dataURLtoFile(dataUrl, 'photo.png'),
-              {
-                maxSizeMB: 1,
-                maxWidthOrHeight: 500,
-              },
-            );
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              setMainPhoto(reader.result);
-              setAddTime(new Date().toLocaleString());
-              setModifyTime(new Date().toLocaleString());
-            };
-            reader.readAsDataURL(compressedFile);
-          } catch (error) {
-            console.error('Error compressing camera image:', error);
-          }
-          setIsCameraActive(false);
-          if (video.srcObject) {
-            video.srcObject.getTracks().forEach((track) => track.stop());
-          }
-        }
-      };
-
-      const handleTakeWinningPhoto = async () => {
-        if (videoRef.current && canvasRef.current) {
-          const video = videoRef.current;
-          const canvas = canvasRef.current;
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/png');
-          try {
-            const compressedFile = await imageCompression(
-              dataURLtoFile(dataUrl, 'winning-photo.png'),
-              {
-                maxSizeMB: 1,
-                maxWidthOrHeight: 500,
-              },
-            );
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              setWinningPhotos((prevPhotos) => [...prevPhotos, reader.result]);
-            };
-            reader.readAsDataURL(compressedFile);
-          } catch (error) {
-            console.error('Error compressing camera image:', error);
-          }
-          setIsWinningCameraActive(false);
-          if (videoRef.current && videoRef.current.srcObject) {
-            videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-          }
-        }
-      };
-
-      const dataURLtoFile = (dataurl, filename) => {
-        let arr = dataurl.split(','),
-          mime = arr[0].match(/:(.*?);/)[1],
-          bstr = atob(arr[arr.length - 1]),
-          n = bstr.length,
-          u8arr = new Uint8Array(n);
-        while (n--) {
-          u8arr[n] = bstr.charCodeAt(n);
-        }
-        return new File([u8arr], filename, { type: mime });
       };
 
       const handleSubmit = (e) => {
@@ -298,8 +190,7 @@ import React, { useState, useRef, useEffect } from 'react';
           <form onSubmit={editingLogId ? handleUpdateLog : handleSubmit}>
             <div className="form-group">
               <label>拍摄照片:</label>
-              {!isCameraActive ? (
-                <>
+              
                   <input
                     type="file"
                     accept="image/*"
@@ -313,29 +204,7 @@ import React, { useState, useRef, useEffect } from 'react';
                   >
                     选择照片
                   </button>
-                  <button
-                    type="button"
-                    className="camera-button"
-                    onClick={handleOpenCamera}
-                  >
-                    打开相机
-                  </button>
-                </>
-              ) : (
-                <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    width="320"
-                    height="240"
-                  />
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
-                  <button type="button" onClick={handleTakePhoto}>
-                    拍照
-                  </button>
-                </>
-              )}
+                
               {mainPhoto && (
                 <img
                   src={mainPhoto}
@@ -367,8 +236,7 @@ import React, { useState, useRef, useEffect } from 'react';
             </div>
             <div className="form-group">
               <label>中奖照片 (可选):</label>
-              {!isWinningCameraActive ? (
-                <>
+              
                   <input
                     type="file"
                     accept="image/*"
@@ -383,29 +251,7 @@ import React, { useState, useRef, useEffect } from 'react';
                   >
                     选择照片
                   </button>
-                  <button
-                    type="button"
-                    className="camera-button"
-                    onClick={handleOpenWinningCamera}
-                  >
-                    打开相机
-                  </button>
-                </>
-              ) : (
-                <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    width="320"
-                    height="240"
-                  />
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
-                  <button type="button" onClick={handleTakeWinningPhoto}>
-                    拍照
-                  </button>
-                </>
-              )}
+                
               {winningPhotos &&
                 winningPhotos.map((photo, index) => (
                   <div key={index} style={{display: 'inline-block', position: 'relative'}}>
