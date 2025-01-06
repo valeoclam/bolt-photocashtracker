@@ -20,6 +20,8 @@ import React, { useState, useRef, useEffect } from 'react';
       const winningPhotoInputRef = useRef(null);
       const videoRef = useRef(null);
       const canvasRef = useRef(null);
+      const [isCameraActive, setIsCameraActive] = useState(false);
+      const [isWinningCameraActive, setIsWinningCameraActive] = useState(false);
       const [modalImage, setModalImage] = useState(null);
       const [confirmDeleteId, setConfirmDeleteId] = useState(null);
       const navigate = useNavigate();
