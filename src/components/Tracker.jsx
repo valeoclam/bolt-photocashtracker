@@ -3,12 +3,10 @@ import React, { useState, useRef, useEffect } from 'react';
     import * as EXIF from 'exifreader';
     import imageCompression from 'browser-image-compression';
     import { Link, useNavigate } from 'react-router-dom';
+    import supabase from '../supabase';
 
     function Tracker() {
-      const [logs, setLogs] = useState(() => {
-        const storedLogs = sessionStorage.getItem('cashLogs');
-        return storedLogs ? JSON.parse(storedLogs) : [];
-      });
+      const [logs, setLogs] = useState([]);
       const [inputAmount, setInputAmount] = useState('');
       const [cashOutAmount, setCashOutAmount] = useState('');
       const [mainPhoto, setMainPhoto] = useState(null);
@@ -25,10 +23,57 @@ import React, { useState, useRef, useEffect } from 'react';
       const [modalImage, setModalImage] = useState(null);
       const [confirmDeleteId, setConfirmDeleteId] = useState(null);
       const navigate = useNavigate();
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
 
       useEffect(() => {
-        sessionStorage.setItem('cashLogs', JSON.stringify(logs));
-      }, [logs]);
+        const fetchUser = async () => {
+          const currentUser = await supabase.auth.getUser();
+          setUser(currentUser.data.user);
+          setLoading(false);
+        };
+        fetchUser();
+      }, []);
+
+      useEffect(() => {
+        const fetchLogs = async () => {
+          if (user) {
+            const { data, error } = await supabase
+              .from('cashLogs')
+              .select('*')
+              .eq('user_id', user.id);
+            if (error) {
+              console.error('Error fetching logs:', error);
+            } else {
+              setLogs(data);
+            }
+          }
+        };
+        fetchLogs();
+      }, [user]);
+
+      useEffect(() => {
+        if (user) {
+          sessionStorage.setItem('cashLogs', JSON.stringify(logs));
+        }
+      }, [logs, user]);
+
+      useEffect(() => {
+        const testSupabase = async () => {
+          if (user) {
+            const { data, error } = await supabase
+              .from('cashLogs')
+              .select('*')
+              .limit(1);
+            if (error) {
+              console.error('Error testing Supabase:', error);
+            } else {
+              console.log('Supabase test successful:', data);
+            }
+          }
+        };
+        testSupabase();
+      }, [user]);
 
       const handleMainPhotoChange = async (e) => {
         const file = e.target.files[0];
@@ -80,12 +125,23 @@ import React, { useState, useRef, useEffect } from 'react';
         }
       };
 
-      const handleSubmit = (e) => {
+      const handleSubmit = async (e) => {
         e.preventDefault();
+        console.log('handleSubmit called');
         if (!mainPhoto) {
           alert('请先拍摄或上传照片');
           return;
         }
+        if (!user) {
+          console.error('User not available, cannot add record.');
+          return;
+        }
+
+        if (loading) {
+          console.log('User data is still loading, please wait.');
+          return;
+        }
+
         const newLog = {
           id: uuidv4(),
           inputAmount: parseFloat(inputAmount),
@@ -94,19 +150,31 @@ import React, { useState, useRef, useEffect } from 'react';
           winningPhotos: winningPhotos,
           addTime: addTime,
           modifyTime: modifyTime,
+          user_id: user.id,
         };
-        setLogs((prevLogs) => [...prevLogs, newLog]);
-        setInputAmount('');
-        setCashOutAmount('');
-        setMainPhoto(null);
-        setWinningPhotos(() => []);
-        setAddTime(null);
-        setModifyTime(null);
-        if (mainPhotoInputRef.current) {
-          mainPhotoInputRef.current.value = '';
-        }
-        if (winningPhotoInputRef.current) {
-          winningPhotoInputRef.current.value = '';
+
+        console.log('Inserting new log:', newLog);
+
+        const { data, error } = await supabase.from('cashLogs').insert([newLog]);
+        console.log('Supabase response:', { data, error });
+
+        if (error) {
+          console.error('Error inserting log:', error);
+        } else {
+          console.log('Log inserted successfully:', data);
+          setLogs((prevLogs) => [...prevLogs, newLog]);
+          setInputAmount('');
+          setCashOutAmount('');
+          setMainPhoto(null);
+          setWinningPhotos(() => []);
+          setAddTime(null);
+          setModifyTime(null);
+          if (mainPhotoInputRef.current) {
+            mainPhotoInputRef.current.value = '';
+          }
+          if (winningPhotoInputRef.current) {
+            winningPhotoInputRef.current.value = '';
+          }
         }
       };
 
@@ -131,7 +199,7 @@ import React, { useState, useRef, useEffect } from 'react';
         }
       };
 
-      const handleEditLog = (log) => {
+      const handleEditLog = async (log) => {
         setEditingLogId(log.id);
         setInputAmount(log.inputAmount);
         setCashOutAmount(log.cashOutAmount);
@@ -141,37 +209,56 @@ import React, { useState, useRef, useEffect } from 'react';
         setModifyTime(log.modifyTime);
       };
 
-      const handleUpdateLog = (e) => {
+      const handleUpdateLog = async (e) => {
         e.preventDefault();
-        const updatedLogs = logs.map((log) => {
-          if (log.id === editingLogId) {
-            return {
-              ...log,
-              inputAmount: parseFloat(inputAmount),
-              cashOutAmount: parseFloat(cashOutAmount),
-              mainPhoto: mainPhoto,
-              winningPhotos: winningPhotos,
-              modifyTime: new Date().toLocaleString(),
-            };
-          }
-          return log;
-        });
-        setLogs(updatedLogs);
-        setEditingLogId(null);
-        setInputAmount('');
-        setCashOutAmount('');
-        setMainPhoto(null);
-        setWinningPhotos(() => []);
-        setAddTime(null);
-        setModifyTime(null);
-        navigate('/');
+        if (!user) {
+          console.error('User not available, cannot update record.');
+          return;
+        }
+        const updatedLog = {
+          inputAmount: parseFloat(inputAmount),
+          cashOutAmount: parseFloat(cashOutAmount),
+          mainPhoto: mainPhoto,
+          winningPhotos: winningPhotos,
+          modifyTime: new Date().toLocaleString(),
+        };
+        const { error } = await supabase
+          .from('cashLogs')
+          .update(updatedLog)
+          .eq('id', editingLogId)
+          .eq('user_id', user.id);
+        if (error) {
+          console.error('Error updating log:', error);
+        } else {
+          const updatedLogs = logs.map((log) =>
+            log.id === editingLogId ? { ...log, ...updatedLog } : log,
+          );
+          setLogs(updatedLogs);
+          setEditingLogId(null);
+          setInputAmount('');
+          setCashOutAmount('');
+          setMainPhoto(null);
+          setWinningPhotos(() => []);
+          setAddTime(null);
+          setModifyTime(null);
+          navigate('/');
+        }
       };
 
-      const handleDeleteLog = (id) => {
-        if (confirmDeleteId === id) {
-          const updatedLogs = logs.filter((log) => log.id !== id);
-          setLogs(updatedLogs);
-          setConfirmDeleteId(null);
+      const handleDeleteLog = async (id) => {
+        if (confirmDeleteId === id && user) {
+          const { error } = await supabase
+            .from('cashLogs')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', user.id);
+          if (error) {
+            console.error('Error deleting log:', error);
+          } else {
+            const updatedLogs = logs.filter((log) => log.id !== id);
+            setLogs(updatedLogs);
+            setConfirmDeleteId(null);
+          }
         } else {
           setConfirmDeleteId(id);
         }
@@ -188,25 +275,25 @@ import React, { useState, useRef, useEffect } from 'react';
       return (
         <div className="container">
           <h1>Photo Cash Tracker</h1>
-          <Link to="/history" className="link-button">查看所有记录</Link>
+          <Link to="/history" className="link-button">
+            查看所有记录
+          </Link>
           <form onSubmit={editingLogId ? handleUpdateLog : handleSubmit}>
             <div className="form-group">
               <label>拍摄照片:</label>
-              
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleMainPhotoChange}
-                    ref={mainPhotoInputRef}
-                    style={{ display: 'none' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => mainPhotoInputRef.current.click()}
-                  >
-                    选择照片
-                  </button>
-                
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleMainPhotoChange}
+                ref={mainPhotoInputRef}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={() => mainPhotoInputRef.current.click()}
+              >
+                选择照片
+              </button>
               {mainPhoto && (
                 <img
                   src={mainPhoto}
@@ -238,25 +325,26 @@ import React, { useState, useRef, useEffect } from 'react';
             </div>
             <div className="form-group">
               <label>中奖照片 (可选):</label>
-              
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleWinningPhotoChange}
-                    ref={winningPhotoInputRef}
-                    style={{ display: 'none' }}
-                    multiple
-                  />
-                  <button
-                    type="button"
-                    onClick={() => winningPhotoInputRef.current.click()}
-                  >
-                    选择照片
-                  </button>
-                
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleWinningPhotoChange}
+                ref={winningPhotoInputRef}
+                style={{ display: 'none' }}
+                multiple
+              />
+              <button
+                type="button"
+                onClick={() => winningPhotoInputRef.current.click()}
+              >
+                选择照片
+              </button>
               {winningPhotos &&
                 winningPhotos.map((photo, index) => (
-                  <div key={index} style={{display: 'inline-block', position: 'relative'}}>
+                  <div
+                    key={index}
+                    style={{ display: 'inline-block', position: 'relative' }}
+                  >
                     <img
                       src={photo}
                       alt={`Winning Preview ${index + 1}`}
@@ -266,7 +354,15 @@ import React, { useState, useRef, useEffect } from 'react';
                     {editingLogId && (
                       <button
                         type="button"
-                        style={{position: 'absolute', top: 0, right: 0, backgroundColor: 'red', color: 'white', border: 'none', cursor: 'pointer'}}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          right: 0,
+                          backgroundColor: 'red',
+                          color: 'white',
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
                         onClick={() => handleRemoveWinningPhoto(index)}
                       >
                         X
@@ -279,7 +375,17 @@ import React, { useState, useRef, useEffect } from 'react';
               {editingLogId ? '更新记录' : '添加记录'}
             </button>
             {editingLogId && (
-              <button type="button" onClick={() => {setEditingLogId(null); setInputAmount(''); setCashOutAmount(''); setMainPhoto(null); setWinningPhotos([]); navigate('/')}}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingLogId(null);
+                  setInputAmount('');
+                  setCashOutAmount('');
+                  setMainPhoto(null);
+                  setWinningPhotos([]);
+                  navigate('/');
+                }}
+              >
                 取消编辑
               </button>
             )}

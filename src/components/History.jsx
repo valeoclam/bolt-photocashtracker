@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
     import { Link, useNavigate } from 'react-router-dom';
+    import supabase from '../supabase';
 
     function History() {
-      const [logs, setLogs] = useState(() => {
-        const storedLogs = sessionStorage.getItem('cashLogs');
-        return storedLogs ? JSON.parse(storedLogs) : [];
-      });
+      const [logs, setLogs] = useState([]);
       const [startDate, setStartDate] = useState('');
       const [endDate, setEndDate] = useState('');
       const [sortedLogs, setSortedLogs] = useState([]);
@@ -19,6 +17,32 @@ import React, { useState, useEffect } from 'react';
       const [modifyTime, setModifyTime] = useState(null);
       const [confirmDeleteId, setConfirmDeleteId] = useState(null);
       const navigate = useNavigate();
+      const [user, setUser] = useState(null);
+
+      useEffect(() => {
+        const fetchUser = async () => {
+          const currentUser = await supabase.auth.getUser();
+          setUser(currentUser.data.user);
+        };
+        fetchUser();
+      }, []);
+
+      useEffect(() => {
+        const fetchLogs = async () => {
+          if (user) {
+            const { data, error } = await supabase
+              .from('cashLogs')
+              .select('*')
+              .eq('user_id', user.id);
+            if (error) {
+              console.error('Error fetching logs:', error);
+            } else {
+              setLogs(data);
+            }
+          }
+        };
+        fetchLogs();
+      }, [user]);
 
       useEffect(() => {
         setSortedLogs([...logs].reverse());
@@ -42,8 +66,10 @@ import React, { useState, useEffect } from 'react';
         setSortedLogs((prevLogs) => {
           const sorted = [...prevLogs].sort((a, b) =>
             sortByProfit
-              ? (a.cashOutAmount - a.inputAmount) - (b.cashOutAmount - b.inputAmount)
-              : (b.cashOutAmount - b.inputAmount) - (a.cashOutAmount - a.inputAmount),
+              ? (a.cashOutAmount - a.inputAmount) -
+                (b.cashOutAmount - b.inputAmount)
+              : (b.cashOutAmount - b.inputAmount) -
+                (a.cashOutAmount - a.inputAmount),
           );
           return sorted;
         });
@@ -59,37 +85,54 @@ import React, { useState, useEffect } from 'react';
         setModifyTime(log.modifyTime);
       };
 
-      const handleUpdateLog = (e) => {
+      const handleUpdateLog = async (e) => {
         e.preventDefault();
-        const updatedLogs = logs.map((log) => {
-          if (log.id === editingLogId) {
-            return {
-              ...log,
-              inputAmount: parseFloat(inputAmount),
-              cashOutAmount: parseFloat(cashOutAmount),
-              mainPhoto: mainPhoto,
-              winningPhotos: winningPhotos,
-              modifyTime: new Date().toLocaleString(),
-            };
+        if (user) {
+          const updatedLog = {
+            inputAmount: parseFloat(inputAmount),
+            cashOutAmount: parseFloat(cashOutAmount),
+            mainPhoto: mainPhoto,
+            winningPhotos: winningPhotos,
+            modifyTime: new Date().toLocaleString(),
+          };
+          const { error } = await supabase
+            .from('cashLogs')
+            .update(updatedLog)
+            .eq('id', editingLogId)
+            .eq('user_id', user.id);
+          if (error) {
+            console.error('Error updating log:', error);
+          } else {
+            const updatedLogs = logs.map((log) =>
+              log.id === editingLogId ? { ...log, ...updatedLog } : log,
+            );
+            setLogs(updatedLogs);
+            setEditingLogId(null);
+            setInputAmount('');
+            setCashOutAmount('');
+            setMainPhoto(null);
+            setWinningPhotos([]);
+            setAddTime(null);
+            setModifyTime(null);
+            navigate('/history');
           }
-          return log;
-        });
-        setLogs(updatedLogs);
-        setEditingLogId(null);
-        setInputAmount('');
-        setCashOutAmount('');
-        setMainPhoto(null);
-        setWinningPhotos([]);
-        setAddTime(null);
-        setModifyTime(null);
-        navigate('/history');
+        }
       };
 
-      const handleDeleteLog = (id) => {
-        if (confirmDeleteId === id) {
-          const updatedLogs = logs.filter((log) => log.id !== id);
-          setLogs(updatedLogs);
-          setConfirmDeleteId(null);
+      const handleDeleteLog = async (id) => {
+        if (confirmDeleteId === id && user) {
+          const { error } = await supabase
+            .from('cashLogs')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', user.id);
+          if (error) {
+            console.error('Error deleting log:', error);
+          } else {
+            const updatedLogs = logs.filter((log) => log.id !== id);
+            setLogs(updatedLogs);
+            setConfirmDeleteId(null);
+          }
         } else {
           setConfirmDeleteId(id);
         }
@@ -111,7 +154,9 @@ import React, { useState, useEffect } from 'react';
       return (
         <div className="container">
           <h1>历史记录</h1>
-          <Link to="/" className="link-button">返回添加记录</Link>
+          <Link to="/" className="link-button">
+            返回添加记录
+          </Link>
           <div className="form-group">
             <label>开始时间:</label>
             <input
@@ -137,7 +182,8 @@ import React, { useState, useEffect } from 'react';
           {sortedLogs.map((log, index) => (
             <div key={log.id} className="log-item">
               <p>
-                <strong>编号:</strong> {logs.length - logs.findIndex(l => l.id === log.id)}
+                <strong>编号:</strong>{' '}
+                {logs.length - logs.findIndex((l) => l.id === log.id)}
               </p>
               <p>
                 <strong>添加时间:</strong> {log.addTime}
@@ -156,61 +202,60 @@ import React, { useState, useEffect } from 'react';
               <p>
                 <strong>盈亏金额:</strong> {log.cashOutAmount - log.inputAmount}
               </p>
-              {log.mainPhoto && (
-                <img
-                  src={log.mainPhoto}
-                  alt="Main Log"
-                />
-              )}
+              {log.mainPhoto && <img src={log.mainPhoto} alt="Main Log" />}
               {log.winningPhotos &&
                 log.winningPhotos.map((photo, index) => (
-                  <img
-                    key={index}
-                    src={photo}
-                    alt={`Winning Log ${index + 1}`}
-                  />
+                  <img key={index} src={photo} alt={`Winning Log ${index + 1}`} />
                 ))}
-                {editingLogId === log.id ? (
-                  <form onSubmit={handleUpdateLog}>
-                    <div className="form-group">
-                      <label>投入金额:</label>
-                      <input
-                        type="number"
-                        id="inputAmount"
-                        value={inputAmount}
-                        onChange={handleInputChange}
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>兑换金额:</label>
-                      <input
-                        type="number"
-                        id="cashOutAmount"
-                        value={cashOutAmount}
-                        onChange={handleInputChange}
-                        required
-                      />
-                    </div>
-                    <button type="submit">更新</button>
-                    <button type="button" onClick={() => {setEditingLogId(null); navigate('/history')}}>取消</button>
-                  </form>
-                ) : (
-                  <>
-                    <button
-                      className="edit-button"
-                      onClick={() => handleEditLog(log)}
-                    >
-                      编辑
-                    </button>
-                    <button
-                      className="delete-button"
-                      onClick={() => handleDeleteLog(log.id)}
-                    >
-                      {confirmDeleteId === log.id ? '确认删除' : '删除'}
-                    </button>
-                  </>
-                )}
+              {editingLogId === log.id ? (
+                <form onSubmit={handleUpdateLog}>
+                  <div className="form-group">
+                    <label>投入金额:</label>
+                    <input
+                      type="number"
+                      id="inputAmount"
+                      value={inputAmount}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>兑换金额:</label>
+                    <input
+                      type="number"
+                      id="cashOutAmount"
+                      value={cashOutAmount}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
+                  <button type="submit">更新</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingLogId(null);
+                      navigate('/history');
+                    }}
+                  >
+                    取消
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <button
+                    className="edit-button"
+                    onClick={() => handleEditLog(log)}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    className="delete-button"
+                    onClick={() => handleDeleteLog(log.id)}
+                  >
+                    {confirmDeleteId === log.id ? '确认删除' : '删除'}
+                  </button>
+                </>
+              )}
             </div>
           ))}
         </div>
