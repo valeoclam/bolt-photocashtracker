@@ -3,7 +3,6 @@ import React, { useState, useRef, useEffect } from 'react';
     import * as EXIF from 'exifreader';
     import imageCompression from 'browser-image-compression';
     import { Link, useNavigate } from 'react-router-dom';
-    import supabase from '../supabase';
 
     function Tracker() {
       const [logs, setLogs] = useState([]);
@@ -23,57 +22,23 @@ import React, { useState, useRef, useEffect } from 'react';
       const [modalImage, setModalImage] = useState(null);
       const [confirmDeleteId, setConfirmDeleteId] = useState(null);
       const navigate = useNavigate();
-      const [user, setUser] = useState(null);
       const [loading, setLoading] = useState(true);
-
-      useEffect(() => {
-        const fetchUser = async () => {
-          const currentUser = await supabase.auth.getUser();
-          setUser(currentUser.data.user);
-          setLoading(false);
-        };
-        fetchUser();
-      }, []);
+      const user = {id: 'test-user-id'};
 
       useEffect(() => {
         const fetchLogs = async () => {
-          if (user) {
-            const { data, error } = await supabase
-              .from('cashLogs')
-              .select('*')
-              .eq('user_id', user.id);
-            if (error) {
-              console.error('Error fetching logs:', error);
-            } else {
-              setLogs(data);
-            }
+          const storedLogs = sessionStorage.getItem('cashLogs');
+          if (storedLogs) {
+            setLogs(JSON.parse(storedLogs));
           }
+          setLoading(false);
         };
         fetchLogs();
-      }, [user]);
+      }, []);
 
       useEffect(() => {
-        if (user) {
-          sessionStorage.setItem('cashLogs', JSON.stringify(logs));
-        }
-      }, [logs, user]);
-
-      useEffect(() => {
-        const testSupabase = async () => {
-          if (user) {
-            const { data, error } = await supabase
-              .from('cashLogs')
-              .select('*')
-              .limit(1);
-            if (error) {
-              console.error('Error testing Supabase:', error);
-            } else {
-              console.log('Supabase test successful:', data);
-            }
-          }
-        };
-        testSupabase();
-      }, [user]);
+        sessionStorage.setItem('cashLogs', JSON.stringify(logs));
+      }, [logs]);
 
       const handleMainPhotoChange = async (e) => {
         const file = e.target.files[0];
@@ -127,13 +92,8 @@ import React, { useState, useRef, useEffect } from 'react';
 
       const handleSubmit = async (e) => {
         e.preventDefault();
-        console.log('handleSubmit called');
         if (!mainPhoto) {
           alert('请先拍摄或上传照片');
-          return;
-        }
-        if (!user) {
-          console.error('User not available, cannot add record.');
           return;
         }
 
@@ -153,28 +113,18 @@ import React, { useState, useRef, useEffect } from 'react';
           user_id: user.id,
         };
 
-        console.log('Inserting new log:', newLog);
-
-        const { data, error } = await supabase.from('cashLogs').insert([newLog]);
-        console.log('Supabase response:', { data, error });
-
-        if (error) {
-          console.error('Error inserting log:', error);
-        } else {
-          console.log('Log inserted successfully:', data);
-          setLogs((prevLogs) => [...prevLogs, newLog]);
-          setInputAmount('');
-          setCashOutAmount('');
-          setMainPhoto(null);
-          setWinningPhotos(() => []);
-          setAddTime(null);
-          setModifyTime(null);
-          if (mainPhotoInputRef.current) {
-            mainPhotoInputRef.current.value = '';
-          }
-          if (winningPhotoInputRef.current) {
-            winningPhotoInputRef.current.value = '';
-          }
+        setLogs((prevLogs) => [...prevLogs, newLog]);
+        setInputAmount('');
+        setCashOutAmount('');
+        setMainPhoto(null);
+        setWinningPhotos(() => []);
+        setAddTime(null);
+        setModifyTime(null);
+        if (mainPhotoInputRef.current) {
+          mainPhotoInputRef.current.value = '';
+        }
+        if (winningPhotoInputRef.current) {
+          winningPhotoInputRef.current.value = '';
         }
       };
 
@@ -211,10 +161,6 @@ import React, { useState, useRef, useEffect } from 'react';
 
       const handleUpdateLog = async (e) => {
         e.preventDefault();
-        if (!user) {
-          console.error('User not available, cannot update record.');
-          return;
-        }
         const updatedLog = {
           inputAmount: parseFloat(inputAmount),
           cashOutAmount: parseFloat(cashOutAmount),
@@ -222,43 +168,25 @@ import React, { useState, useRef, useEffect } from 'react';
           winningPhotos: winningPhotos,
           modifyTime: new Date().toLocaleString(),
         };
-        const { error } = await supabase
-          .from('cashLogs')
-          .update(updatedLog)
-          .eq('id', editingLogId)
-          .eq('user_id', user.id);
-        if (error) {
-          console.error('Error updating log:', error);
-        } else {
-          const updatedLogs = logs.map((log) =>
-            log.id === editingLogId ? { ...log, ...updatedLog } : log,
-          );
-          setLogs(updatedLogs);
-          setEditingLogId(null);
-          setInputAmount('');
-          setCashOutAmount('');
-          setMainPhoto(null);
-          setWinningPhotos(() => []);
-          setAddTime(null);
-          setModifyTime(null);
-          navigate('/');
-        }
+        const updatedLogs = logs.map((log) =>
+          log.id === editingLogId ? { ...log, ...updatedLog } : log,
+        );
+        setLogs(updatedLogs);
+        setEditingLogId(null);
+        setInputAmount('');
+        setCashOutAmount('');
+        setMainPhoto(null);
+        setWinningPhotos(() => []);
+        setAddTime(null);
+        setModifyTime(null);
+        navigate('/');
       };
 
       const handleDeleteLog = async (id) => {
-        if (confirmDeleteId === id && user) {
-          const { error } = await supabase
-            .from('cashLogs')
-            .delete()
-            .eq('id', id)
-            .eq('user_id', user.id);
-          if (error) {
-            console.error('Error deleting log:', error);
-          } else {
-            const updatedLogs = logs.filter((log) => log.id !== id);
-            setLogs(updatedLogs);
-            setConfirmDeleteId(null);
-          }
+        if (confirmDeleteId === id) {
+          const updatedLogs = logs.filter((log) => log.id !== id);
+          setLogs(updatedLogs);
+          setConfirmDeleteId(null);
         } else {
           setConfirmDeleteId(id);
         }

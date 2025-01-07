@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
     import { Link, useNavigate } from 'react-router-dom';
-    import supabase from '../supabase';
 
     function History() {
       const [logs, setLogs] = useState([]);
@@ -17,32 +16,17 @@ import React, { useState, useEffect } from 'react';
       const [modifyTime, setModifyTime] = useState(null);
       const [confirmDeleteId, setConfirmDeleteId] = useState(null);
       const navigate = useNavigate();
-      const [user, setUser] = useState(null);
-
-      useEffect(() => {
-        const fetchUser = async () => {
-          const currentUser = await supabase.auth.getUser();
-          setUser(currentUser.data.user);
-        };
-        fetchUser();
-      }, []);
+      const user = {id: 'test-user-id'};
 
       useEffect(() => {
         const fetchLogs = async () => {
-          if (user) {
-            const { data, error } = await supabase
-              .from('cashLogs')
-              .select('*')
-              .eq('user_id', user.id);
-            if (error) {
-              console.error('Error fetching logs:', error);
-            } else {
-              setLogs(data);
-            }
+          const storedLogs = sessionStorage.getItem('cashLogs');
+          if (storedLogs) {
+            setLogs(JSON.parse(storedLogs));
           }
         };
         fetchLogs();
-      }, [user]);
+      }, []);
 
       useEffect(() => {
         setSortedLogs([...logs].reverse());
@@ -87,52 +71,32 @@ import React, { useState, useEffect } from 'react';
 
       const handleUpdateLog = async (e) => {
         e.preventDefault();
-        if (user) {
-          const updatedLog = {
-            inputAmount: parseFloat(inputAmount),
-            cashOutAmount: parseFloat(cashOutAmount),
-            mainPhoto: mainPhoto,
-            winningPhotos: winningPhotos,
-            modifyTime: new Date().toLocaleString(),
-          };
-          const { error } = await supabase
-            .from('cashLogs')
-            .update(updatedLog)
-            .eq('id', editingLogId)
-            .eq('user_id', user.id);
-          if (error) {
-            console.error('Error updating log:', error);
-          } else {
-            const updatedLogs = logs.map((log) =>
-              log.id === editingLogId ? { ...log, ...updatedLog } : log,
-            );
-            setLogs(updatedLogs);
-            setEditingLogId(null);
-            setInputAmount('');
-            setCashOutAmount('');
-            setMainPhoto(null);
-            setWinningPhotos([]);
-            setAddTime(null);
-            setModifyTime(null);
-            navigate('/history');
-          }
-        }
+        const updatedLog = {
+          inputAmount: parseFloat(inputAmount),
+          cashOutAmount: parseFloat(cashOutAmount),
+          mainPhoto: mainPhoto,
+          winningPhotos: winningPhotos,
+          modifyTime: new Date().toLocaleString(),
+        };
+        const updatedLogs = logs.map((log) =>
+          log.id === editingLogId ? { ...log, ...updatedLog } : log,
+        );
+        setLogs(updatedLogs);
+        setEditingLogId(null);
+        setInputAmount('');
+        setCashOutAmount('');
+        setMainPhoto(null);
+        setWinningPhotos([]);
+        setAddTime(null);
+        setModifyTime(null);
+        navigate('/history');
       };
 
       const handleDeleteLog = async (id) => {
-        if (confirmDeleteId === id && user) {
-          const { error } = await supabase
-            .from('cashLogs')
-            .delete()
-            .eq('id', id)
-            .eq('user_id', user.id);
-          if (error) {
-            console.error('Error deleting log:', error);
-          } else {
-            const updatedLogs = logs.filter((log) => log.id !== id);
-            setLogs(updatedLogs);
-            setConfirmDeleteId(null);
-          }
+        if (confirmDeleteId === id) {
+          const updatedLogs = logs.filter((log) => log.id !== id);
+          setLogs(updatedLogs);
+          setConfirmDeleteId(null);
         } else {
           setConfirmDeleteId(id);
         }
